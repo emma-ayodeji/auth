@@ -1,48 +1,84 @@
-// auth.js
+import React, { useState, useEffect } from 'react';
+import { PublicClientApplication, Configuration, AuthenticationResult } from '@azure/msal-browser';
+import { msalConfig } from './auth-config'; // Your configuration
 
-import { PublicClientApplication, Configuration, LogLevel, AuthenticationResult } from '@azure/msal-node';
-import { msalConfig } from './auth-config';
+const msalInstance = new PublicClientApplication(msalConfig);
 
-// Configure the MSAL application (Public Client Application)
+const AuthComponent: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
-const pca = new PublicClientApplication(msalConfig);
-
-// Function to get the authorization URL (for initiating login)
-async function getAuthCodeUrl():Promise<string>{
-    const authCodeUrlParameters = {
-        scopes: ['user.read'],  // Scopes to request during authentication
-        redirectUri: msalConfig.auth.redirectUri,
+  // Check if the user is authenticated
+  useEffect(() => {
+    const checkAccount = async () => {
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        setIsAuthenticated(true);
+      }
     };
+    checkAccount();
+  }, []);
 
+  // Login handler - Redirects the user to Azure AD
+  const handleLogin = async () => {
     try {
-        const authCodeUrl = await pca.getAuthCodeUrl(authCodeUrlParameters);
-        return authCodeUrl;  // Return the URL where the user should be redirected
+      const loginResponse = await msalInstance.loginRedirect({
+        scopes: ['user.read'],
+      });
+      console.log('Login success:', loginResponse);
+      setIsAuthenticated(true);
     } catch (error) {
-        console.error('Error getting auth code URL:', error);
-        throw error;
+      console.error('Login failed:', error);
     }
-}
+  };
 
-//gets a token using the authorization code
-async function acquireTokenByCode(code: string):Promise<string> {
-    const tokenRequest = {
-        code: code,  // The authorization code returned by Azure AD
-        scopes: ['user.read'],  // Scopes to request during token exchange
-        redirectUri: msalConfig.auth.redirectUri,
-    };
-
+  // Fetch access token
+  const fetchAccessToken = async () => {
     try {
-        const response = await pca.acquireTokenByCode(tokenRequest);  // Exchange the code for a token
-        return response.accessToken;  // Return the access token
+      const tokenResponse = await msalInstance.acquireTokenSilent({
+        scopes: ['user.read'],
+      });
+      setAccessToken(tokenResponse.accessToken);
+      console.log('Access Token:', tokenResponse.accessToken);
     } catch (error) {
-        console.error('Error acquiring token by code:', error);
-        throw error;  // Propagate the error
+      console.error('Error acquiring token:', error);
+      if (error instanceof InteractionRequiredAuthError) {
+        // If silent token acquisition fails, fallback to popup
+        msalInstance.acquireTokenPopup({
+          scopes: ['user.read'],
+        }).then((response) => {
+          setAccessToken(response.accessToken);
+          console.log('Access Token (popup):', response.accessToken);
+        }).catch((popupError) => {
+          console.error('Popup token acquisition failed:', popupError);
+        });
+      }
     }
-}
+  };
 
-// Export the functions and MSAL client for use in other parts of the application
-export {
-    pca,
-    getAuthCodeUrl,
-    acquireTokenByCode,
+  // Logout handler
+  const handleLogout = () => {
+    msalInstance.logout();
+    setIsAuthenticated(false);
+    setAccessToken(null);
+  };
+
+  return (
+    <div>
+      {!isAuthenticated ? (
+        <div>
+          <button onClick={handleLogin}>Login with Azure AD</button>
+        </div>
+      ) : (
+        <div>
+          <h3>Welcome! You are logged in.</h3>
+          <button onClick={fetchAccessToken}>Get Access Token</button>
+          {accessToken && <p>Access Token: {accessToken}</p>}
+          <button onClick={handleLogout}>Logout</button>
+        </div>
+      )}
+    </div>
+  );
 };
+
+export default AuthComponent;
