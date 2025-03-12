@@ -1,32 +1,62 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import Login from "./Login";  // Import Login component
 
-const Login = () => {
+const App: React.FC = () => {
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [userInfo, setUserInfo] = useState<any>(null);
     const [loading, setLoading] = useState(false);
 
-    const handleLogin = async () => {
+    // Check if the user is authenticated (e.g., check for token in localStorage)
+    useEffect(() => {
+        const token = localStorage.getItem("accessToken"); // Or use cookies for token storage
+        if (token) {
+            // Optionally verify the token or check user details here
+            setIsAuthenticated(true);
+        }
+    }, []);
+
+    // Fetch user info after login (or token validation)
+    const fetchUserData = async () => {
         setLoading(true);
         try {
-            // Make request to the /login route to get Microsoft login URL
-            const response = await fetch("http://localhost:3000/login");
+            const response = await fetch("http://localhost:3000/user-info", {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+                },
+            });
             const data = await response.json();
-
-            // Redirect the user to Microsoft's login page
-            window.location.href = data.url;
+            setUserInfo(data);  // Set user info once fetched
         } catch (error) {
-            console.error("Login failed:", error);
+            console.error("Failed to fetch user data", error);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="login-container">
-            <h2>Login with Microsoft</h2>
-            <button onClick={handleLogin} disabled={loading}>
-                {loading ? "Redirecting..." : "Sign in with Microsoft"}
-            </button>
+        <div className="app-container">
+            {!isAuthenticated ? (
+                // Show Login component if not authenticated
+                <Login />
+            ) : (
+                // Show user info once authenticated
+                <div>
+                    <h2>Welcome, {userInfo ? userInfo.name : "User"}</h2>
+                    <button onClick={fetchUserData} disabled={loading}>
+                        {loading ? "Fetching..." : "Fetch User Info"}
+                    </button>
+                    <div>
+                        {userInfo ? (
+                            <pre>{JSON.stringify(userInfo, null, 2)}</pre>
+                        ) : (
+                            <p>No user info available.</p>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
-export default Login;
+export default App;
