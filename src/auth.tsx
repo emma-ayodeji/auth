@@ -1,48 +1,92 @@
-// auth.js
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 
-import { PublicClientApplication, Configuration, LogLevel, AuthenticationResult } from '@azure/msal-node';
-import { msalConfig } from './auth-config';
-
-// Configure the MSAL application (Public Client Application)
-
-const pca = new PublicClientApplication(msalConfig);
-
-// Function to get the authorization URL (for initiating login)
-async function getAuthCodeUrl():Promise<string>{
-    const authCodeUrlParameters = {
-        scopes: ['user.read'],  // Scopes to request during authentication
-        redirectUri: msalConfig.auth.redirectUri,
-    };
-
-    try {
-        const authCodeUrl = await pca.getAuthCodeUrl(authCodeUrlParameters);
-        return authCodeUrl;  // Return the URL where the user should be redirected
-    } catch (error) {
-        console.error('Error getting auth code URL:', error);
-        throw error;
-    }
+// Define User type
+interface User {
+  username: string;
+  role: string; // e.g., 'admin' or 'user'
+  accessToken: string;
 }
 
-//gets a token using the authorization code
-async function acquireTokenByCode(code: string):Promise<string> {
-    const tokenRequest = {
-        code: code,  // The authorization code returned by Azure AD
-        scopes: ['user.read'],  // Scopes to request during token exchange
-        redirectUri: msalConfig.auth.redirectUri,
-    };
+// Create authentication context
+const AuthContext = createContext<{
+  user: User | null;
+  login: () => void;
+  logout: () => void;
+}>({
+  user: null,
+  login: () => {},
+  logout: () => {},
+});
 
-    try {
-        const response = await pca.acquireTokenByCode(tokenRequest);  // Exchange the code for a token
-        return response.accessToken;  // Return the access token
-    } catch (error) {
-        console.error('Error acquiring token by code:', error);
-        throw error;  // Propagate the error
+// Custom hook to access AuthContext
+export const useAuth = () => useContext(AuthContext);
+
+// AuthProvider component
+export const AuthProvider: React.FC = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    // Check if the URL contains an authorization code (callback from Microsoft)
+    const queryParams = new URLSearchParams(location.search);
+    const code = queryParams.get("code");
+
+    if (code) {
+      fetchToken(code);
     }
-}
+  }, [location]);
 
-// Export the functions and MSAL client for use in other parts of the application
-export {
-    pca,
-    getAuthCodeUrl,
-    acquireTokenByCode,
+  // Function to initiate login by redirecting to Microsoft login
+  const login = async () => {
+    try {
+      const response = await fetch("http://localhost:3000/login"); // Backend API call
+      const data = await response.json();
+      window.location.href = data.url; // Redirect to Microsoft login
+    } catch (error) {
+      console.error("Login failed:", error);
+    }
+  };
+
+  // Function to exchange auth code for an access token
+  const fetchToken = async (code: string) => {
+    try {
+      const response = await fetch("http://localhost:3000/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+
+      const data = await response.json();
+
+      if (data.accessToken) {
+        // Fetch user info (replace with a real API call)
+        const userInfo: User = {
+          username: "John Doe", // Ideally fetched from Microsoft Graph API
+          role: "admin", // Assign role based on user's group or API response
+          accessToken: data.accessToken,
+        };
+
+        setUser(userInfo);
+        localStorage.setItem("user", JSON.stringify(userInfo));
+        navigate("/dashboard"); // Redirect to a protected page
+      }
+    } catch (error) {
+      console.error("Token fetch failed:", error);
+    }
+  };
+
+  // Logout function
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem("user");
+    navigate("/");
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
