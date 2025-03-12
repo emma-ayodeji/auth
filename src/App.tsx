@@ -1,32 +1,52 @@
-import React, { useState } from "react";
+import React from "react";
+import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import { useAuth } from "./auth";
+import ProtectedRoute from "./ProtectedRoute";
+import Login from "./Login";
 
-const Login = () => {
-    const [loading, setLoading] = useState(false);
+const AdminPage = () => <div>Admin Dashboard</div>;
+const UserPage = () => <div>User Dashboard</div>;
+const HomePage = () => <div>Home Page</div>;
 
-    const handleLogin = async () => {
-        setLoading(true);
-        try {
-            // Make request to the /login route to get Microsoft login URL
-            const response = await fetch("http://localhost:3000/login");
-            const data = await response.json();
+const App = () => {
+  const { user, logout } = useAuth();
 
-            // Redirect the user to Microsoft's login page
-            window.location.href = data.url;
-        } catch (error) {
-            console.error("Login failed:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="login-container">
-            <h2>Login with Microsoft</h2>
-            <button onClick={handleLogin} disabled={loading}>
-                {loading ? "Redirecting..." : "Sign in with Microsoft"}
-            </button>
-        </div>
-    );
+  return (
+    <Router>
+      <div>
+        {!user ? (
+          <Login />  // Use the Login component for authentication
+        ) : (
+          <div>
+            <h2>Welcome, {user.username}!</h2>
+            <p>Role: {user.role}</p>
+            <button onClick={logout}>Logout</button>
+          </div>
+        )}
+        
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/user"
+            element={
+              <ProtectedRoute allowedRoles={["user", "admin"]}>
+                <UserPage />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </div>
+    </Router>
+  );
 };
 
-export default Login;
+export default App;
